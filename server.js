@@ -18,14 +18,29 @@ cronJobs();
 const app = express();
 
 // Middleware
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    'https://event-front-amber.vercel.app'
+].filter(Boolean);
+
 app.use(cors({
     origin: function (origin, callback) {
-        // Allow requests with no origin (mobile apps, curl, etc) and any localhost port
-        if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error('Not allowed by CORS'));
+        // Allow requests with no origin (mobile apps, curl, etc)
+        if (!origin) {
+            return callback(null, true);
         }
+        
+        // Allow any localhost origin
+        if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(origin)) {
+            return callback(null, true);
+        }
+
+        // Allow configured live origins
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        callback(new Error('Not allowed by CORS'));
     },
     credentials: true,
 }));

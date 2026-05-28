@@ -35,6 +35,11 @@ app.use(cors({
             return callback(null, true);
         }
 
+        // Allow any Vercel deployment URL
+        if (origin.startsWith('https://') && origin.endsWith('.vercel.app')) {
+            return callback(null, true);
+        }
+
         // Allow configured live origins
         if (allowedOrigins.includes(origin)) {
             return callback(null, true);

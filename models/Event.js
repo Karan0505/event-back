@@ -64,4 +64,9 @@ const eventSchema = new mongoose.Schema({
     }],
 }, { timestamps: true });
 
+eventSchema.index({ organizer: 1 });
+eventSchema.index({ date: 1 });
+eventSchema.index({ attendees: 1 });
+eventSchema.index({ cancelledAttendees: 1 });
+
 module.exports = mongoose.model('Event', eventSchema);

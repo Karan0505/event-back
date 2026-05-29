@@ -13,8 +13,6 @@ router.get('/stats', protect, authorize('organizer', 'admin'), async (req, res) 
         const query = req.user.role === 'admin' ? {} : { organizer: req.user._id };
 
         const myEvents = await Event.find(query)
-            .populate('attendees', 'name email')
-            .populate('organizer', 'name email')
             .sort({ date: -1 });
 
         const totalEvents = myEvents.length;

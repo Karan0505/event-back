@@ -57,14 +57,18 @@ router.get('/stats', async (req, res) => {
         const recentSignups = await User.countDocuments({ createdAt: { $gte: weekAgo } });
 
         // Daily user activity (last 7 days)
-        const dailyActivity = [];
+        const dailyActivityPromises = [];
         for (let i = 6; i >= 0; i--) {
             const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
             const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i + 1);
             const dayLabel = dayStart.toLocaleString('en', { weekday: 'short' });
-            const signups = await User.countDocuments({ createdAt: { $gte: dayStart, $lt: dayEnd } });
-            dailyActivity.push({ day: dayLabel, signups });
+            
+            dailyActivityPromises.push(
+                User.countDocuments({ createdAt: { $gte: dayStart, $lt: dayEnd } })
+                    .then(signups => ({ day: dayLabel, signups }))
+            );
         }
+        const dailyActivity = await Promise.all(dailyActivityPromises);
 
         res.json({
             totalUsers,

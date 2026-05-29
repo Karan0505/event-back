@@ -24,6 +24,9 @@ const notificationSchema = new mongoose.Schema({
         default: Date.now,
         expires: 604800 // Automatically delete after 7 days (60 * 60 * 24 * 7 seconds)
     }
-});
+}, { timestamps: false });
+
+notificationSchema.index({ user: 1, createdAt: -1 });
+notificationSchema.index({ user: 1, isRead: 1 });
 
 module.exports = mongoose.model('Notification', notificationSchema);

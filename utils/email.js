@@ -1,5 +1,25 @@
 const nodemailer = require('nodemailer');
 
+let transporter = null;
+
+const getTransporter = () => {
+    if (!transporter) {
+        transporter = nodemailer.createTransport({
+            service: "gmail",
+            pool: true, // Use connection pooling
+            maxConnections: 5,
+            maxMessages: 100,
+            rateDelta: 1000,
+            rateLimit: 5, // Limit rate to avoid spam detection
+            auth: {
+                user: process.env.FROM_EMAIL || "maxparmar09@gmail.com",
+                pass: process.env.EMAIL_PASS
+            }
+        });
+    }
+    return transporter;
+};
+
 const sendEmail = async (options) => {
     try {
         if (!process.env.EMAIL_PASS) {
@@ -7,13 +27,7 @@ const sendEmail = async (options) => {
             return;
         }
 
-        const transporter = nodemailer.createTransport({
-            service: "gmail",
-            auth: {
-                user: process.env.FROM_EMAIL || "maxparmar09@gmail.com",
-                pass: process.env.EMAIL_PASS
-            }
-        });
+        const activeTransporter = getTransporter();
 
         const baseHtml = options.html;
         const styledHtml = baseHtml ? `
@@ -58,14 +72,15 @@ const sendEmail = async (options) => {
 
         const msg = {
             to: options.email,
+            bcc: options.bcc,
             from: process.env.FROM_NAME ? `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>` : process.env.FROM_EMAIL,
             subject: options.subject,
             text: options.message,
             html: styledHtml || options.html,
         };
 
-        const info = await transporter.sendMail(msg);
-        console.log(`Message sent to ${options.email}, ID: ${info.messageId}`);
+        const info = await activeTransporter.sendMail(msg);
+        console.log(`Message sent to ${options.email || 'BCC recipients'}, ID: ${info.messageId}`);
     } catch (error) {
         console.error("Email could not be sent", error);
     }

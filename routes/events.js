@@ -14,8 +14,6 @@ router.get('/', async (req, res) => {
     try {
         const events = await Event.find()
             .populate('organizer', 'name email')
-            .populate('attendees', 'name email')
-            .populate('cancelledAttendees', 'name email')
             .sort({ date: 1 });
         res.json(events);
     } catch (error) {
@@ -80,9 +78,10 @@ router.post('/', protect, authorize('organizer', 'admin'), async (req, res) => {
                 console.log(`Successfully created new event notifications for ${users.length} users.`);
 
                 const emailSubject = `🎉 New Event Added: ${title}!`;
-                for (const user of users) {
+                const emails = users.map(u => u.email).filter(Boolean);
+                if (emails.length > 0) {
                     const emailHTML = `
-                        <h2>Hi ${user.name}, a new event just dropped!</h2>
+                        <h2>A new event just dropped!</h2>
                         <p><strong>${populatedEvent.organizer.name}</strong> just published a new event: <strong>${title}</strong>.</p>
                         <p><strong>Date:</strong> ${new Date(date).toLocaleDateString()}</p>
                         <p><strong>Time:</strong> ${time}</p>
@@ -93,7 +92,7 @@ router.post('/', protect, authorize('organizer', 'admin'), async (req, res) => {
                     `;
 
                     await sendEmail({
-                        email: user.email,
+                        bcc: emails,
                         subject: emailSubject,
                         html: emailHTML,
                         message: `New event dropped! ${title} at ${location} on ${new Date(date).toLocaleDateString()}.`
@@ -153,12 +152,13 @@ router.put('/:id', protect, authorize('organizer', 'admin'), async (req, res) =>
                     console.log(`Successfully created event update notifications for ${uniqueUserIds.length} attendees.`);
 
                     const emailSubject = `⚠️ Important Update: ${event.title}`;
+                    const emails = Array.from(uniqueAttendees.values())
+                        .map(attendee => attendee.email)
+                        .filter(Boolean);
                     
-                    for (const [, attendee] of uniqueAttendees) {
-                        if(!attendee.email) continue;
-                        
+                    if (emails.length > 0) {
                         const emailHTML = `
-                            <h2>Hi ${attendee.name}, there has been an update!</h2>
+                            <h2>Important Update: there has been an update to ${event.title}!</h2>
                             <p>The organizer <strong>${event.organizer.name}</strong> has just made some changes to the details of <strong>${event.title}</strong>, which you are currently registered for.</p>
                             <h3>Updated Event Details:</h3>
                             <ul>
@@ -171,7 +171,7 @@ router.put('/:id', protect, authorize('organizer', 'admin'), async (req, res) =>
                         `;
 
                         await sendEmail({
-                            email: attendee.email,
+                            bcc: emails,
                             subject: emailSubject,
                             html: emailHTML,
                             message: `The event ${event.title} has been updated. Please check the new details.`
@@ -441,8 +441,6 @@ router.get('/user/my-tickets', protect, async (req, res) => {
             ]
         })
             .populate('organizer', 'name email')
-            .populate('attendees', 'name email')
-            .populate('cancelledAttendees', 'name email')
             .sort({ date: 1 });
 
         res.json(events);

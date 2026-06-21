@@ -3,37 +3,40 @@ const nodemailer = require('nodemailer');
 let transporter = null;
 
 const getTransporter = () => {
-    if (!transporter) {
-        transporter = nodemailer.createTransport({
-            host: "smtp.gmail.com",
-            port: 587,
-            secure: false,
-            family: 4, // Force IPv4 to prevent Gmail connection timeouts on cloud hosting (Render, etc.)
-            pool: true, // Use connection pooling
-            maxConnections: 5,
-            maxMessages: 100,
-            rateDelta: 1000,
-            rateLimit: 5, // Limit rate to avoid spam detection
-            auth: {
-                user: process.env.FROM_EMAIL || "maxparmar09@gmail.com",
-                pass: process.env.EMAIL_PASS
-            }
-        });
-    }
-    return transporter;
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      family: 4, // Force IPv4 to prevent Gmail connection timeouts on cloud hosting (Render, etc.)
+      pool: true, // Use connection pooling
+      maxConnections: 5,
+      maxMessages: 100,
+      rateDelta: 1000,
+      rateLimit: 5, // Limit rate to avoid spam detection
+      auth: {
+        user: process.env.EMAIL,
+        pass: process.env.APP_PASSWORD
+      }
+    });
+  }
+  return transporter;
 };
 
 const sendEmail = async (options) => {
-    try {
-        if (!process.env.EMAIL_PASS) {
-            console.warn('EMAIL_PASS is not set. Emails will not be sent.');
-            return;
-        }
+  try {
+    if (!process.env.APP_PASSWORD) {
+      console.warn('APP_PASSWORD is not set. Emails will not be sent.');
+      return;
+    }
 
-        const activeTransporter = getTransporter();
+    const activeTransporter = getTransporter();
 
-        const baseHtml = options.html;
-        const styledHtml = baseHtml ? `
+    await activeTransporter.verify();
+    console.log("SMTP Connected Successfully");
+
+    const baseHtml = options.html;
+    const styledHtml = baseHtml ? `
 <!DOCTYPE html>
 <html>
 <head>
@@ -73,20 +76,20 @@ const sendEmail = async (options) => {
 </html>
         ` : null;
 
-        const msg = {
-            to: options.email,
-            bcc: options.bcc,
-            from: process.env.FROM_NAME ? `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>` : process.env.FROM_EMAIL,
-            subject: options.subject,
-            text: options.message,
-            html: styledHtml || options.html,
-        };
+    const msg = {
+      to: options.email,
+      bcc: options.bcc,
+      from: process.env.FROM_NAME ? `"${process.env.FROM_NAME}" <${process.env.FROM_EMAIL}>` : process.env.FROM_EMAIL,
+      subject: options.subject,
+      text: options.message,
+      html: styledHtml || options.html,
+    };
 
-        const info = await activeTransporter.sendMail(msg);
-        console.log(`Message sent to ${options.email || 'BCC recipients'}, ID: ${info.messageId}`);
-    } catch (error) {
-        console.error("Email could not be sent", error);
-    }
+    const info = await activeTransporter.sendMail(msg);
+    console.log(`Message sent to ${options.email || 'BCC recipients'}, ID: ${info.messageId}`);
+  } catch (error) {
+    console.error("Email could not be sent", error);
+  }
 };
 
 module.exports = sendEmail;

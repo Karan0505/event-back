@@ -5,7 +5,10 @@ let transporter = null;
 const getTransporter = () => {
     if (!transporter) {
         transporter = nodemailer.createTransport({
-            service: "gmail",
+            host: "smtp.gmail.com",
+            port: 587,
+            secure: false,
+            family: 4, // Force IPv4 to prevent Gmail connection timeouts on cloud hosting (Render, etc.)
             pool: true, // Use connection pooling
             maxConnections: 5,
             maxMessages: 100,

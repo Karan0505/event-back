@@ -12,10 +12,23 @@ const Notification = require('../models/Notification');
 // @access  Public
 router.get('/', async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 12;
+        const skip = (page - 1) * limit;
+
+        const totalEvents = await Event.countDocuments();
         const events = await Event.find()
             .populate('organizer', 'name email')
-            .sort({ date: 1 });
-        res.json(events);
+            .sort({ date: 1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.json({
+            events,
+            currentPage: page,
+            totalPages: Math.ceil(totalEvents / limit),
+            totalEvents
+        });
     } catch (error) {
         res.status(500).json({ message: error.message });
     }
@@ -27,9 +40,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const event = await Event.findById(req.params.id)
-            .populate('organizer', 'name email')
-            .populate('attendees', 'name email')
-            .populate('cancelledAttendees', 'name email');
+            .populate('organizer', 'name email');
 
         if (!event) {    
             return res.status(404).json({ message: 'Event not found' });
@@ -91,12 +102,17 @@ router.post('/', protect, authorize('organizer', 'admin'), async (req, res) => {
                         <p>See you there!</p>
                     `;
 
-                    await sendEmail({
-                        bcc: emails,
-                        subject: emailSubject,
-                        html: emailHTML,
-                        message: `New event dropped! ${title} at ${location} on ${new Date(date).toLocaleDateString()}.`
-                    });
+                    // Send email in batches of 90 to prevent SMTP BCC limits outage
+                    const bccLimit = 90;
+                    for (let i = 0; i < emails.length; i += bccLimit) {
+                        const emailChunk = emails.slice(i, i + bccLimit);
+                        await sendEmail({
+                            bcc: emailChunk,
+                            subject: emailSubject,
+                            html: emailHTML,
+                            message: `New event dropped! ${title} at ${location} on ${new Date(date).toLocaleDateString()}.`
+                        });
+                    }
                 }
             } catch (err) {
                 console.error('Failed to notify users of new event', err);
@@ -170,12 +186,17 @@ router.put('/:id', protect, authorize('organizer', 'admin'), async (req, res) =>
                             <p>Best regards,<br/>The Evently Team</p>
                         `;
 
-                        await sendEmail({
-                            bcc: emails,
-                            subject: emailSubject,
-                            html: emailHTML,
-                            message: `The event ${event.title} has been updated. Please check the new details.`
-                        });
+                        // Send email in batches of 90 to prevent SMTP BCC limits outage
+                        const bccLimit = 90;
+                        for (let i = 0; i < emails.length; i += bccLimit) {
+                            const emailChunk = emails.slice(i, i + bccLimit);
+                            await sendEmail({
+                                bcc: emailChunk,
+                                subject: emailSubject,
+                                html: emailHTML,
+                                message: `The event ${event.title} has been updated. Please check the new details.`
+                            });
+                        }
                     }
                 }
             } catch (err) {
@@ -216,6 +237,7 @@ router.delete('/:id', protect, authorize('organizer', 'admin'), async (req, res)
 router.post('/:id/register', protect, async (req, res) => {
     try {
         const { quantity = 1, seats = [] } = req.body;
+        const userId = req.user._id;
         const event = await Event.findById(req.params.id);
 
         if (!event) {
@@ -229,31 +251,45 @@ router.post('/:id/register', protect, async (req, res) => {
             }
         }
 
-        // Check seat limit
-        if (event.maxAttendees && event.attendees.length + quantity > event.maxAttendees) {
-            return res.status(400).json({ message: `Cannot book ${quantity} tickets. Only ${event.maxAttendees - event.attendees.length} seats available.` });
-        }
-
         // Check user limit (max 10 tickets per event)
-        const userTicketCount = event.attendees.filter(id => id.toString() === req.user._id.toString()).length;
+        const userTicketCount = event.attendees.filter(id => id.toString() === userId.toString()).length;
         if (userTicketCount + quantity > 10) {
             return res.status(400).json({ message: `You can only book a maximum of 10 tickets per event. You already have ${userTicketCount} tickets.` });
         }
 
-        for (let i = 0; i < quantity; i++) {
-            event.attendees.push(req.user._id);
-        }
+        // Perform transactional update using atomic operations to prevent concurrency race conditions
+        const query = {
+            _id: req.params.id,
+            $expr: {
+                $lte: [
+                    { $add: [{ $size: "$attendees" }, quantity] },
+                    "$maxAttendees"
+                ]
+            }
+        };
 
         if (seats && seats.length > 0) {
-            event.bookedSeats.push(...seats);
-            event.seatsRecord.push({ user: req.user._id, seats });
+            query.bookedSeats = { $nin: seats };
         }
-        await event.save();
 
-        const updatedEvent = await Event.findById(req.params.id)
-            .populate('organizer', 'name email')
-            .populate('attendees', 'name email')
-            .populate('cancelledAttendees', 'name email');
+        const updatedEvent = await Event.findOneAndUpdate(
+            query,
+            {
+                $push: {
+                    attendees: { $each: Array(quantity).fill(userId) },
+                    ...(seats.length > 0 ? {
+                        bookedSeats: { $each: seats },
+                        seatsRecord: { user: userId, seats }
+                    } : {})
+                }
+            },
+            { new: true }
+        )
+        .populate('organizer', 'name email');
+
+        if (!updatedEvent) {
+            return res.status(400).json({ message: 'Registration failed. Either seats are already taken or event capacity is exceeded.' });
+        }
 
         // Send Booking Confirmation Notification
         try {

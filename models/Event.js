@@ -66,6 +66,7 @@ const eventSchema = new mongoose.Schema({
 
 eventSchema.index({ organizer: 1 });
 eventSchema.index({ date: 1 });
+eventSchema.index({ category: 1, date: 1 }); // Compound index for fast homepage/filter query
 eventSchema.index({ attendees: 1 });
 eventSchema.index({ cancelledAttendees: 1 });
 

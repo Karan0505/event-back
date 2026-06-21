@@ -20,6 +20,32 @@ cronJobs();
 
 const app = express();
 
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
+
+// Use helmet for security headers
+app.use(helmet());
+
+// Enable response compression
+app.use(compression());
+
+// Define rate limiter
+const limiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+    legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+    skip: (req) => {
+        // Skip rate limiting for localhost/development connections
+        return req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+    },
+    message: { message: 'Too many requests from this IP, please try again after 15 minutes' }
+});
+
+// Apply rate limiter to all API endpoints
+app.use('/api/', limiter);
+
 // Middleware
 const allowedOrigins = [
     process.env.FRONTEND_URL,
